@@ -74,7 +74,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     const msg = e instanceof Error ? e.message : String(e);
     const combined = `${name} ${msg}`.toLowerCase();
     if (!window.isSecureContext) {
-      return 'Camera needs a secure connection. Use HTTPS or open the app on this device at https://… (not http://your-computer-ip). For local testing, try ngrok, Vite HTTPS, or deploy to a host with TLS.';
+      return 'The camera only works on HTTPS (or localhost on this same device). On your PC in the tops-scanner folder run: npm run dev — then on your phone open https://YOUR_PC_LAN_IP:5173 (not http). Accept the “not secure” certificate warning once. For a production build over HTTPS: npm run build && npm run start — then use https://YOUR_PC_LAN_IP:3000. Deploying to any real HTTPS host also fixes this.';
     }
     if (combined.includes('notallowed') || combined.includes('permission')) {
       return 'Camera permission was blocked. In your browser settings, allow camera for this site, then tap Retry.';
