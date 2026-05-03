@@ -120,10 +120,17 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
           ]
         : [Html5QrcodeSupportedFormats.QR_CODE];
 
-      scannerRef.current = new Html5Qrcode('reader', { formatsToSupport, verbose: false });
+      scannerRef.current = new Html5Qrcode('reader', { 
+        formatsToSupport, 
+        useBarCodeDetectorIfSupported: true,
+        verbose: false 
+      });
       const cfg = {
         fps: 10,
         qrbox: (vw: number, vh: number) => {
+          if (scanMode === 'barcode') {
+            return { width: Math.min(vw * 0.9, 600), height: 150 };
+          }
           const edge = Math.min(vw, vh, 720);
           const box = Math.max(140, Math.floor(edge * 0.72));
           return { width: box, height: box };
