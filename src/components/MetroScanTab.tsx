@@ -88,7 +88,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     }
   };
 
-  const lookupMetro = async (code: string, method: ScanMethod) => {
+  const lookupMetro = async (code: string, _method: ScanMethod) => {
     if (!code.trim()) return;
     setIsLoading(true); setError('');
     await new Promise(r => setTimeout(r, 400));
