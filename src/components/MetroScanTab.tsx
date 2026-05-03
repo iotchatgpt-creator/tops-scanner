@@ -41,7 +41,10 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [actionLocationId, setActionLocationId] = useState('');
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraInitError, setCameraInitError] = useState('');
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerStartGuard = useRef(false);
 
   useEffect(() => { getAllLocations().then(setLocations); }, []);
 
@@ -56,27 +59,104 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
   const isCameraMode = scanMode === 'barcode' || scanMode === 'qrcode';
 
   useEffect(() => {
-    if (isCameraMode && !metro && !error && !initialMetroId) { startScanner(); }
-    else { stopScanner(); }
-    return () => { stopScanner(); };
-  }, [scanMode, metro, error]);
+    if (!isCameraMode || metro || error || initialMetroId) {
+      setCameraInitError('');
+      void stopScanner();
+      return;
+    }
+    setCameraInitError('');
+    void startScanner();
+    return () => { void stopScanner(); };
+  }, [scanMode, metro, error, initialMetroId]);
+
+  const cameraErrorMessage = (e: unknown): string => {
+    const name = e && typeof e === 'object' && 'name' in e ? String((e as Error).name) : '';
+    const msg = e instanceof Error ? e.message : String(e);
+    const combined = `${name} ${msg}`.toLowerCase();
+    if (!window.isSecureContext) {
+      return 'Camera needs a secure connection. Use HTTPS or open the app on this device at https://… (not http://your-computer-ip). For local testing, try ngrok, Vite HTTPS, or deploy to a host with TLS.';
+    }
+    if (combined.includes('notallowed') || combined.includes('permission')) {
+      return 'Camera permission was blocked. In your browser settings, allow camera for this site, then tap Retry.';
+    }
+    if (combined.includes('notfound') || combined.includes('no cameras')) {
+      return 'No usable camera was found on this device.';
+    }
+    if (combined.includes('overconstrained') || combined.includes('constraint')) {
+      return 'This device could not open the camera with the requested settings. Tap Retry to try another camera.';
+    }
+    return msg || 'Could not start the camera. Check permissions and that you are on HTTPS (required on phones).';
+  };
+
+  const pickPreferredCameraId = (devices: { id: string; label: string }[]): string | null => {
+    if (!devices.length) return null;
+    const back = devices.find(d => /back|rear|environment|wide|world/i.test(d.label));
+    return (back ?? devices[0]).id;
+  };
 
   const startScanner = async () => {
+    if (scannerStartGuard.current) return;
+    scannerStartGuard.current = true;
+    setCameraInitError('');
+    setCameraStarting(true);
     try {
+      if (!window.isSecureContext) {
+        throw new Error('INSECURE_CONTEXT');
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('This browser does not expose the camera API (getUserMedia).');
+      }
       if (scannerRef.current?.isScanning) try { await scannerRef.current.stop(); } catch (_) {}
       if (scannerRef.current) try { scannerRef.current.clear(); } catch (_) {}
-      scannerRef.current = new Html5Qrcode('reader');
-      setIsScanning(true);
-      const cfg = { fps: 10, qrbox: { width: 250, height: 250 } };
-      const onOk = (text: string) => { stopScanner(); lookupMetro(text, 'CAMERA'); };
-      try {
-        await scannerRef.current.start({ facingMode: 'environment' }, cfg, onOk, () => {});
-      } catch (_) {
-        const cams = await Html5Qrcode.getCameras();
-        if (cams.length > 0) await scannerRef.current.start(cams[0].id, cfg, onOk, () => {});
-        else throw new Error('No cameras found');
+      scannerRef.current = new Html5Qrcode('reader', /* verbose */ false);
+      const cfg = {
+        fps: 10,
+        qrbox: (vw: number, vh: number) => {
+          const edge = Math.min(vw, vh, 720);
+          const box = Math.max(140, Math.floor(edge * 0.72));
+          return { width: box, height: box };
+        },
+      };
+      const onOk = (text: string) => { void stopScanner(); void lookupMetro(text, 'CAMERA'); };
+      const devices = await Html5Qrcode.getCameras();
+      const preferredId = pickPreferredCameraId(devices);
+      const tryOrder: Array<string | { facingMode: string }> = preferredId
+        ? [preferredId, { facingMode: 'environment' }, { facingMode: 'user' }]
+        : [{ facingMode: 'environment' }, { facingMode: 'user' }];
+      let lastErr: unknown;
+      let started = false;
+      for (const cam of tryOrder) {
+        try {
+          await scannerRef.current.start(cam as any, cfg, onOk, () => {});
+          started = true;
+          break;
+        } catch (err) {
+          lastErr = err;
+          try {
+            if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+          } catch (_) {}
+          try {
+            scannerRef.current?.clear();
+          } catch (_) {}
+        }
       }
-    } catch (e: any) { console.error(e); setIsScanning(false); }
+      if (!started) throw lastErr ?? new Error('Camera start failed');
+      setIsScanning(true);
+    } catch (e: unknown) {
+      console.error(e);
+      setIsScanning(false);
+      setCameraInitError(cameraErrorMessage(e));
+      try {
+        if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+      } catch (_) {}
+      try {
+        scannerRef.current?.clear();
+      } catch (_) {}
+      scannerRef.current = null;
+    } finally {
+      setCameraStarting(false);
+      scannerStartGuard.current = false;
+    }
   };
 
   const stopScanner = async () => {
@@ -127,7 +207,13 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     lookupMetro(metro.id, metro.lastScanMethod);
   };
 
-  const resetView = () => { setMetro(null); setError(''); setManualCode(''); setActionLocationId(''); };
+  const resetView = () => {
+    setMetro(null);
+    setError('');
+    setManualCode('');
+    setActionLocationId('');
+    setCameraInitError('');
+  };
 
   const actions = metro ? (STATUS_ACTIONS[metro.status] || []) : [];
 
@@ -157,14 +243,25 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       {/* Camera view */}
       {!metro && !error && isCameraMode && (
         <div className="card">
-          <div className="scanner-container">
-            <div id="reader"></div>
-            {!isScanning && (
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#fff', textAlign: 'center' }}>
-                <Loader2 className="animate-spin" size={26} /><div style={{ marginTop: '0.4rem', fontSize: '0.8rem' }}>Starting camera…</div>
+          {cameraInitError ? (
+            <div style={{ padding: '1rem 1.1rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#b91c1c' }}>Camera unavailable</div>
+              <div style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>{cameraInitError}</div>
+              <div className="btn-group">
+                <button type="button" className="btn btn-primary" onClick={() => { setCameraInitError(''); void startScanner(); }}>Retry camera</button>
+                <button type="button" className="btn btn-outline" onClick={() => setScanMode('rfid')}>Use manual / RFID entry</button>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="scanner-container">
+              <div id="reader" />
+              {cameraStarting && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#fff', textAlign: 'center', zIndex: 2, pointerEvents: 'none' }}>
+                  <Loader2 className="animate-spin" size={26} /><div style={{ marginTop: '0.4rem', fontSize: '0.8rem' }}>Starting camera…</div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
