@@ -17,7 +17,7 @@ export default function OrdersTab({ onDataChange }: { onDataChange: () => void }
 
   const load = async () => {
     const [o, m, l] = await Promise.all([getAllOrders(), getAllMetros(), getAllLocations()]);
-    setOrders(o.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    setOrders(o.sort((a, b) => new Date(b.orderDateTime).getTime() - new Date(a.orderDateTime).getTime()));
     setMetros(m);
     setLocations(l);
   };
@@ -106,7 +106,7 @@ export default function OrdersTab({ onDataChange }: { onDataChange: () => void }
                   </div>
                   <div className="item-sub">{order.description || '—'}</div>
                   <div className="item-meta">
-                    Dest: {getLocName(order.destinationLocationId)} · {orderMetros.length} metro(s) · {new Date(order.createdAt).toLocaleDateString()}
+                    Dest: {getLocName(order.locationId)} · {orderMetros.length} metro(s) · {new Date(order.orderDateTime).toLocaleDateString()}
                   </div>
                 </div>
               </div>

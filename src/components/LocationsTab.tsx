@@ -46,7 +46,7 @@ export default function LocationsTab() {
                       {loc.name}
                       <span className={`badge badge-${loc.type.toLowerCase()}`}>{loc.type}</span>
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{loc.area} · ID: {loc.id}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{loc.area} · ID: {loc.id} · Plant: {loc.plantId || 'N/A'} · CC: {loc.costCenterId || 'N/A'} {loc.isDepartment ? ' (Dept)' : ''}</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

@@ -32,20 +32,39 @@ export interface Metro {
 }
 
 export interface Order {
-  id: string;
+  id: string; // Maps to orderId
   description: string;
   status: OrderStatus;
-  destinationLocationId: string;
+  locationId: string; // Maps to locationId (TextileOrder)
+  orderTypeId: number;
+  locationDropZoneId: string | null;
+  wbsElementId: string | null;
+  orderDateTime: string;
+  orderDueDate: string;
+  orderProcessingTotalPriceAmount: number;
+  orderCostCenterCode: string;
+  plantCode: string;
   metroIds: string[];
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface Location {
   id: string;
   name: string;
   type: LocationType;
-  area: string;         // e.g. "Building A", "Warehouse"
+  area: string;
+  locationTypeId: number;
+  isDepartment: boolean;
+  costCenterId: number | null;
+  plantId: number | null;
+}
+
+export interface GarmentProcessingPrice {
+  id: string; // garmentProcessingPriceId
+  garmentProcessingTypeId: number;
+  textileProductId: string;
+  plantId: number;
+  effectiveDate: string;
+  amount: number;
 }
 
 export interface ScanEvent {
@@ -65,6 +84,7 @@ interface ScannerDB extends DBSchema {
   metros: { key: string; value: Metro };
   orders: { key: string; value: Order };
   locations: { key: string; value: Location };
+  garmentProcessingPrices: { key: string; value: GarmentProcessingPrice };
   scanEvents: { key: string; value: ScanEvent; indexes: { 'by-metro': string; 'by-timestamp': string } };
 }
 
@@ -73,15 +93,15 @@ let dbPromise: Promise<IDBPDatabase<ScannerDB>>;
 // ── Seed Data ──
 
 const SEED_LOCATIONS: Location[] = [
-  { id: 'LOC-BUF-01', name: 'Clean Buffer Storage', type: 'Buffer', area: 'Warehouse A' },
-  { id: 'LOC-BUF-02', name: 'Clean Buffer Storage B', type: 'Buffer', area: 'Warehouse B' },
-  { id: 'LOC-STR-01', name: 'Guest Room Storage A', type: 'Storage', area: 'Resort Building 1' },
-  { id: 'LOC-STR-02', name: 'Guest Room Storage B', type: 'Storage', area: 'Resort Building 2' },
-  { id: 'LOC-STR-03', name: 'Pool & Spa Storage', type: 'Storage', area: 'Recreation Center' },
-  { id: 'LOC-DOC-01', name: 'Soiled Textile Dock', type: 'Dock', area: 'Warehouse A' },
-  { id: 'LOC-DOC-02', name: 'Loading Dock', type: 'Dock', area: 'Warehouse A' },
-  { id: 'LOC-PLT-01', name: 'Central Laundry Plant', type: 'Plant', area: 'Off-site Facility' },
-  { id: 'LOC-STG-01', name: 'Clean Metro Staging', type: 'StagingArea', area: 'Warehouse A' },
+  { id: 'LOC-BUF-01', name: 'Clean Buffer Storage', type: 'Buffer', area: 'Warehouse A', locationTypeId: 2, isDepartment: false, costCenterId: null, plantId: 100 },
+  { id: 'LOC-BUF-02', name: 'Clean Buffer Storage B', type: 'Buffer', area: 'Warehouse B', locationTypeId: 2, isDepartment: false, costCenterId: null, plantId: 100 },
+  { id: 'LOC-STR-01', name: 'Guest Room Storage A', type: 'Storage', area: 'Resort Building 1', locationTypeId: 3, isDepartment: true, costCenterId: 501, plantId: 100 },
+  { id: 'LOC-STR-02', name: 'Guest Room Storage B', type: 'Storage', area: 'Resort Building 2', locationTypeId: 3, isDepartment: true, costCenterId: 502, plantId: 100 },
+  { id: 'LOC-STR-03', name: 'Pool & Spa Storage', type: 'Storage', area: 'Recreation Center', locationTypeId: 3, isDepartment: true, costCenterId: 503, plantId: 100 },
+  { id: 'LOC-DOC-01', name: 'Soiled Textile Dock', type: 'Dock', area: 'Warehouse A', locationTypeId: 4, isDepartment: false, costCenterId: null, plantId: 100 },
+  { id: 'LOC-DOC-02', name: 'Loading Dock', type: 'Dock', area: 'Warehouse A', locationTypeId: 4, isDepartment: false, costCenterId: null, plantId: 100 },
+  { id: 'LOC-PLT-01', name: 'Central Laundry Plant', type: 'Plant', area: 'Off-site Facility', locationTypeId: 1, isDepartment: false, costCenterId: null, plantId: 100 },
+  { id: 'LOC-STG-01', name: 'Clean Metro Staging', type: 'StagingArea', area: 'Warehouse A', locationTypeId: 5, isDepartment: false, costCenterId: null, plantId: 100 },
 ];
 
 const SEED_METROS: Metro[] = [
@@ -98,8 +118,13 @@ const SEED_METROS: Metro[] = [
 ];
 
 const SEED_ORDERS: Order[] = [
-  { id: 'ORD-001', description: 'Building 1 Weekly Linen Restock', status: 'InTransit', destinationLocationId: 'LOC-STR-01', metroIds: ['MTR-003', 'MTR-004'], createdAt: new Date(Date.now() - 2 * 86400000).toISOString(), updatedAt: new Date(Date.now() - 1800000).toISOString() },
-  { id: 'ORD-002', description: 'Recreation Center Towel Supply', status: 'Delivered', destinationLocationId: 'LOC-STR-03', metroIds: ['MTR-005'], createdAt: new Date(Date.now() - 5 * 86400000).toISOString(), updatedAt: new Date(Date.now() - 86400000).toISOString() },
+  { id: 'ORD-001', description: 'Building 1 Weekly Linen Restock', status: 'InTransit', locationId: 'LOC-STR-01', orderTypeId: 1, locationDropZoneId: 'DZ-01', wbsElementId: 'WBS-100', orderDateTime: new Date(Date.now() - 2 * 86400000).toISOString(), orderDueDate: new Date(Date.now() - 1800000).toISOString(), orderProcessingTotalPriceAmount: 150.00, orderCostCenterCode: 'CC-501', plantCode: 'PLT-100', metroIds: ['MTR-003', 'MTR-004'] },
+  { id: 'ORD-002', description: 'Recreation Center Towel Supply', status: 'Delivered', locationId: 'LOC-STR-03', orderTypeId: 1, locationDropZoneId: 'DZ-02', wbsElementId: 'WBS-101', orderDateTime: new Date(Date.now() - 5 * 86400000).toISOString(), orderDueDate: new Date(Date.now() - 86400000).toISOString(), orderProcessingTotalPriceAmount: 45.50, orderCostCenterCode: 'CC-503', plantCode: 'PLT-100', metroIds: ['MTR-005'] },
+];
+
+const SEED_PAYOUTS: GarmentProcessingPrice[] = [
+  { id: 'PRC-001', garmentProcessingTypeId: 1, textileProductId: 'PROD-TOWEL', plantId: 100, effectiveDate: new Date('2025-01-01').toISOString(), amount: 0.15 },
+  { id: 'PRC-002', garmentProcessingTypeId: 2, textileProductId: 'PROD-SHEET', plantId: 100, effectiveDate: new Date('2025-01-01').toISOString(), amount: 0.25 },
 ];
 
 // ── DB Init ──
@@ -120,6 +145,10 @@ export const initDB = async () => {
         if (!db.objectStoreNames.contains('locations')) {
           db.createObjectStore('locations', { keyPath: 'id' });
         }
+        // Payouts
+        if (!db.objectStoreNames.contains('garmentProcessingPrices')) {
+          db.createObjectStore('garmentProcessingPrices', { keyPath: 'id' });
+        }
         // Scan Events
         if (!db.objectStoreNames.contains('scanEvents')) {
           const store = db.createObjectStore('scanEvents', { keyPath: 'id' });
@@ -133,10 +162,11 @@ export const initDB = async () => {
     const db = await dbPromise;
     const metroCount = await db.count('metros');
     if (metroCount === 0) {
-      const tx = db.transaction(['metros', 'orders', 'locations', 'scanEvents'], 'readwrite');
+      const tx = db.transaction(['metros', 'orders', 'locations', 'garmentProcessingPrices', 'scanEvents'], 'readwrite');
       for (const loc of SEED_LOCATIONS) await tx.objectStore('locations').put(loc);
       for (const metro of SEED_METROS) await tx.objectStore('metros').put(metro);
       for (const order of SEED_ORDERS) await tx.objectStore('orders').put(order);
+      for (const price of SEED_PAYOUTS) await tx.objectStore('garmentProcessingPrices').put(price);
       // Seed a few scan events
       const events: ScanEvent[] = [
         { id: 'EVT-001', metroId: 'MTR-004', action: 'Pickup - Loaded for transit', locationId: 'LOC-DOC-02', method: 'CAMERA', timestamp: new Date(Date.now() - 1800000).toISOString(), userId: 'operator1', notes: 'Loaded onto truck' },
@@ -245,10 +275,16 @@ export const createOrder = async (id: string, description: string, destinationLo
     id,
     description,
     status: 'Draft',
-    destinationLocationId,
+    locationId: destinationLocationId,
+    orderTypeId: 1,
+    locationDropZoneId: null,
+    wbsElementId: null,
     metroIds: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    orderDateTime: new Date().toISOString(),
+    orderDueDate: new Date().toISOString(),
+    orderProcessingTotalPriceAmount: 0.0,
+    orderCostCenterCode: 'UNKNOWN',
+    plantCode: 'UNKNOWN'
   };
   await db.put('orders', order);
   return order;
@@ -272,7 +308,7 @@ export const allocateMetroToOrder = async (orderId: string, metroId: string): Pr
     order.metroIds.push(metroId);
   }
   if (order.status === 'Draft') order.status = 'Allocated';
-  order.updatedAt = new Date().toISOString();
+  order.orderDueDate = new Date().toISOString();
   await db.put('orders', order);
 
   // Record event
@@ -295,7 +331,7 @@ export const updateOrderStatus = async (orderId: string, status: OrderStatus): P
   const order = await db.get('orders', orderId);
   if (!order) return null;
   order.status = status;
-  order.updatedAt = new Date().toISOString();
+  order.orderDueDate = new Date().toISOString();
   await db.put('orders', order);
   return order;
 };
@@ -409,11 +445,13 @@ export const resetDatabase = async () => {
   await db.clear('metros');
   await db.clear('orders');
   await db.clear('locations');
+  await db.clear('garmentProcessingPrices');
   await db.clear('scanEvents');
   // Re-seed
-  const tx = db.transaction(['metros', 'orders', 'locations', 'scanEvents'], 'readwrite');
+  const tx = db.transaction(['metros', 'orders', 'locations', 'garmentProcessingPrices', 'scanEvents'], 'readwrite');
   for (const loc of SEED_LOCATIONS) await tx.objectStore('locations').put(loc);
   for (const metro of SEED_METROS) await tx.objectStore('metros').put(metro);
   for (const order of SEED_ORDERS) await tx.objectStore('orders').put(order);
+  for (const price of SEED_PAYOUTS) await tx.objectStore('garmentProcessingPrices').put(price);
   await tx.done;
 };
