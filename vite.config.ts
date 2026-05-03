@@ -10,10 +10,17 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
+      workbox: {
+        // Ensures document navigations (especially from “Add to Home Screen”) get the SPA shell
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       manifest: {
         name: 'TOPS Scanner',
         short_name: 'Scanner',
         description: 'Enterprise Asset & Container Tracking',
+        start_url: '/',
+        scope: '/',
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
