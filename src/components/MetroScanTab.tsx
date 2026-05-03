@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   Radio, QrCode, Search, Loader2, ArrowLeft, ScanBarcode,
   CheckCircle, XCircle, MapPin, Package, Clock, ChevronRight
@@ -108,7 +108,19 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       }
       if (scannerRef.current?.isScanning) try { await scannerRef.current.stop(); } catch (_) {}
       if (scannerRef.current) try { scannerRef.current.clear(); } catch (_) {}
-      scannerRef.current = new Html5Qrcode('reader', /* verbose */ false);
+      
+      const formatsToSupport = scanMode === 'barcode' 
+        ? [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.ITF,
+          ]
+        : [Html5QrcodeSupportedFormats.QR_CODE];
+
+      scannerRef.current = new Html5Qrcode('reader', { formatsToSupport });
       const cfg = {
         fps: 10,
         qrbox: (vw: number, vh: number) => {
@@ -119,6 +131,9 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       };
       const onOk = (text: string) => { void stopScanner(); void lookupMetro(text, 'CAMERA'); };
       const devices = await Html5Qrcode.getCameras();
+      
+      if (!scannerRef.current) return; // Abort if stopped while waiting for cameras
+
       const preferredId = pickPreferredCameraId(devices);
       const tryOrder: Array<string | { facingMode: string }> = preferredId
         ? [preferredId, { facingMode: 'environment' }, { facingMode: 'user' }]
@@ -126,6 +141,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       let lastErr: unknown;
       let started = false;
       for (const cam of tryOrder) {
+        if (!scannerRef.current) break; // Abort if stopped during the loop
         try {
           await scannerRef.current.start(cam as any, cfg, onOk, () => {});
           started = true;
@@ -140,7 +156,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
           } catch (_) {}
         }
       }
-      if (!started) throw lastErr ?? new Error('Camera start failed');
+      if (!started && scannerRef.current) throw lastErr ?? new Error('Camera start failed');
       setIsScanning(true);
     } catch (e: unknown) {
       console.error(e);
