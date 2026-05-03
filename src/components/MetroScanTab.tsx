@@ -120,7 +120,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
           ]
         : [Html5QrcodeSupportedFormats.QR_CODE];
 
-      scannerRef.current = new Html5Qrcode('reader', { formatsToSupport });
+      scannerRef.current = new Html5Qrcode('reader', { formatsToSupport, verbose: false });
       const cfg = {
         fps: 10,
         qrbox: (vw: number, vh: number) => {
