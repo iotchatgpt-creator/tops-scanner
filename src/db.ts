@@ -241,6 +241,12 @@ export const setRfidAlias = async (rawTag: string, metroId: string): Promise<voi
   });
 };
 
+export const getAllRfidAliases = async (): Promise<RfidAlias[]> => {
+  const db = await initDB();
+  if (!db.objectStoreNames.contains('rfidAliases')) return [];
+  return db.getAll('rfidAliases');
+};
+
 export const findMetroByCode = async (code: string): Promise<Metro | undefined> => {
   const db = await initDB();
   const normalized = normalizeRfidInput(code);
@@ -486,16 +492,47 @@ export const getInventorySummary = async (): Promise<InventorySummary[]> => {
   });
 };
 
+/** Dashboard stat buckets — must stay aligned with `getDashboardStats` filters. */
+export type MetroDashboardBucket =
+  | 'all'
+  | 'cleanAvailable'
+  | 'allocated'
+  | 'inTransit'
+  | 'atStorage'
+  | 'soiled'
+  | 'atPlant';
+
+export const metroMatchesDashboardBucket = (m: Metro, b: MetroDashboardBucket): boolean => {
+  switch (b) {
+    case 'all':
+      return true;
+    case 'cleanAvailable':
+      return m.type === 'Clean' && m.status === 'Available';
+    case 'allocated':
+      return m.status === 'Allocated';
+    case 'inTransit':
+      return ['InTransit', 'SoiledTransit', 'Pickup'].includes(m.status);
+    case 'atStorage':
+      return m.status === 'AtStorage';
+    case 'soiled':
+      return m.type === 'Soiled';
+    case 'atPlant':
+      return ['AtPlant', 'Cleaning'].includes(m.status);
+    default:
+      return true;
+  }
+};
+
 export const getDashboardStats = async () => {
   const metros = await getAllMetros();
   return {
     totalMetros: metros.length,
-    cleanAvailable: metros.filter(m => m.type === 'Clean' && m.status === 'Available').length,
-    allocated: metros.filter(m => m.status === 'Allocated').length,
-    inTransit: metros.filter(m => ['InTransit', 'SoiledTransit', 'Pickup'].includes(m.status)).length,
-    atStorage: metros.filter(m => m.status === 'AtStorage').length,
-    soiled: metros.filter(m => m.type === 'Soiled').length,
-    atPlant: metros.filter(m => ['AtPlant', 'Cleaning'].includes(m.status)).length,
+    cleanAvailable: metros.filter(m => metroMatchesDashboardBucket(m, 'cleanAvailable')).length,
+    allocated: metros.filter(m => metroMatchesDashboardBucket(m, 'allocated')).length,
+    inTransit: metros.filter(m => metroMatchesDashboardBucket(m, 'inTransit')).length,
+    atStorage: metros.filter(m => metroMatchesDashboardBucket(m, 'atStorage')).length,
+    soiled: metros.filter(m => metroMatchesDashboardBucket(m, 'soiled')).length,
+    atPlant: metros.filter(m => metroMatchesDashboardBucket(m, 'atPlant')).length,
   };
 };
 

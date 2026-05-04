@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { ScanBarcode, Package, MapPin, BarChart3, RotateCcw, Smartphone, DollarSign } from 'lucide-react';
-import { getDashboardStats, resetDatabase } from './db';
+import { ScanBarcode, Package, MapPin, BarChart3, RotateCcw, Smartphone, DollarSign, List } from 'lucide-react';
+import { getDashboardStats, resetDatabase, type MetroDashboardBucket } from './db';
 import MetroScanTab from './components/MetroScanTab';
 import InventoryTab from './components/InventoryTab';
 import OrdersTab from './components/OrdersTab';
 import LocationsTab from './components/LocationsTab';
 import PayoutsTab from './components/PayoutsTab';
+import MetrosListTab from './components/MetrosListTab';
 
-type ModuleTab = 'scan' | 'inventory' | 'orders' | 'locations' | 'payouts';
+type ModuleTab = 'scan' | 'inventory' | 'metros' | 'orders' | 'locations' | 'payouts';
 
 function App() {
   const [tab, setTab] = useState<ModuleTab>('scan');
@@ -15,8 +16,17 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [nfcMetroId, setNfcMetroId] = useState<string | null>(null);
   const [nfcBanner, setNfcBanner] = useState<string | null>(null);
+  const [metroListBucket, setMetroListBucket] = useState<MetroDashboardBucket>('all');
 
   const refresh = () => setRefreshKey(k => k + 1);
+
+  const goMetros = (bucket: MetroDashboardBucket) => {
+    setMetroListBucket(bucket);
+    setTab('metros');
+  };
+
+  const statActive = (cardBucket: MetroDashboardBucket) =>
+    (tab === 'metros' && metroListBucket === cardBucket ? 'stat-card--active' : '');
 
   // ── NFC via URL parameter detection ──
   // When an NTAG213 card is tapped on iPhone, it opens the URL written on the card.
@@ -119,11 +129,19 @@ function App() {
         {([
           ['scan', ScanBarcode, 'Metro Scan'],
           ['inventory', BarChart3, 'Inventory'],
+          ['metros', List, 'Metros'],
           ['orders', Package, 'Orders'],
           ['locations', MapPin, 'Locations'],
           ['payouts', DollarSign, 'Payouts'],
         ] as const).map(([key, Icon, label]) => (
-          <button key={key} className={`module-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key as ModuleTab)}>
+          <button
+            key={key}
+            className={`module-tab ${tab === key ? 'active' : ''}`}
+            onClick={() => {
+              if (key === 'metros') setMetroListBucket('all');
+              setTab(key as ModuleTab);
+            }}
+          >
             <Icon size={15} /> {label}
           </button>
         ))}
@@ -131,12 +149,76 @@ function App() {
 
       <div className="page">
         <div className="stats-row">
-          <div className="stat-card total"><div className="stat-value">{stats.totalMetros}</div><div className="stat-label">Total Metros</div></div>
-          <div className="stat-card clean"><div className="stat-value">{stats.cleanAvailable}</div><div className="stat-label">Clean Available</div></div>
-          <div className="stat-card allocated"><div className="stat-value">{stats.allocated}</div><div className="stat-label">Allocated</div></div>
-          <div className="stat-card transit"><div className="stat-value">{stats.inTransit}</div><div className="stat-label">In Transit</div></div>
-          <div className="stat-card soiled"><div className="stat-value">{stats.soiled}</div><div className="stat-label">Soiled</div></div>
-          <div className="stat-card plant"><div className="stat-value">{stats.atPlant}</div><div className="stat-label">At Plant</div></div>
+          <div
+            role="button"
+            tabIndex={0}
+            title="Show all metros"
+            className={`stat-card total stat-card--clickable ${statActive('all')}`}
+            onClick={() => goMetros('all')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMetros('all'); } }}
+          >
+            <div className="stat-value">{stats.totalMetros}</div><div className="stat-label">Total Metros</div>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            title="Show clean available metros"
+            className={`stat-card clean stat-card--clickable ${statActive('cleanAvailable')}`}
+            onClick={() => goMetros('cleanAvailable')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMetros('cleanAvailable'); } }}
+          >
+            <div className="stat-value">{stats.cleanAvailable}</div><div className="stat-label">Clean Available</div>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            title="Show allocated metros"
+            className={`stat-card allocated stat-card--clickable ${statActive('allocated')}`}
+            onClick={() => goMetros('allocated')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMetros('allocated'); } }}
+          >
+            <div className="stat-value">{stats.allocated}</div><div className="stat-label">Allocated</div>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            title="Show in-transit metros"
+            className={`stat-card transit stat-card--clickable ${statActive('inTransit')}`}
+            onClick={() => goMetros('inTransit')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMetros('inTransit'); } }}
+          >
+            <div className="stat-value">{stats.inTransit}</div><div className="stat-label">In Transit</div>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            title="Show metros at storage"
+            className={`stat-card storage stat-card--clickable ${statActive('atStorage')}`}
+            onClick={() => goMetros('atStorage')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMetros('atStorage'); } }}
+          >
+            <div className="stat-value">{stats.atStorage}</div><div className="stat-label">At Storage</div>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            title="Show soiled metros"
+            className={`stat-card soiled stat-card--clickable ${statActive('soiled')}`}
+            onClick={() => goMetros('soiled')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMetros('soiled'); } }}
+          >
+            <div className="stat-value">{stats.soiled}</div><div className="stat-label">Soiled</div>
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            title="Show metros at plant"
+            className={`stat-card plant stat-card--clickable ${statActive('atPlant')}`}
+            onClick={() => goMetros('atPlant')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goMetros('atPlant'); } }}
+          >
+            <div className="stat-value">{stats.atPlant}</div><div className="stat-label">At Plant</div>
+          </div>
         </div>
 
         {tab === 'scan' && (
@@ -148,6 +230,13 @@ function App() {
           />
         )}
         {tab === 'inventory' && <InventoryTab key={`inv-${refreshKey}`} />}
+        {tab === 'metros' && (
+          <MetrosListTab
+            key={`metros-${refreshKey}`}
+            listBucket={metroListBucket}
+            onListBucketChange={setMetroListBucket}
+          />
+        )}
         {tab === 'orders' && <OrdersTab onDataChange={refresh} key={`ord-${refreshKey}`} />}
         {tab === 'locations' && <LocationsTab key={`loc-${refreshKey}`} />}
         {tab === 'payouts' && <PayoutsTab key={`pay-${refreshKey}`} />}

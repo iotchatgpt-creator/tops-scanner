@@ -156,6 +156,17 @@ body {
   transition: transform 0.15s, box-shadow 0.15s;
 }
 .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-card.stat-card--clickable {
+  cursor: pointer;
+}
+.stat-card.stat-card--clickable:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.stat-card.stat-card--active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
 .stat-card .stat-value {
   font-size: 1.75rem;
   font-weight: 800;
@@ -175,6 +186,17 @@ body {
 .stat-card.soiled .stat-value { color: var(--error); }
 .stat-card.plant .stat-value { color: var(--info); }
 .stat-card.total .stat-value { color: var(--text-main); }
+.stat-card.storage .stat-value { color: #0d9488; }
+
+.metro-row-expandable { cursor: pointer; }
+.metro-row-expandable:hover { background: #f8fafc; }
+.metro-row-expandable:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.metro-detail-panel {
+  background: #f8fafc;
+  padding: 0.85rem 1rem;
+  font-size: 0.82rem;
+  border-top: 1px solid var(--border);
+}
 
 /* ── Card ── */
 .card {
