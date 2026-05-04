@@ -288,7 +288,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
 
   const handleAllocateConfirm = async () => {
     if (!metro || !selectedOrderId) return;
-    await allocateMetroToOrder(selectedOrderId, metro.id);
+    await allocateMetroToOrder(selectedOrderId, metro.id, scanMode === 'rfid' ? 'RFID' : 'MANUAL');
     setShowAllocate(false);
     onDataChange();
     lookupMetro(metro.id, metro.lastScanMethod);

@@ -341,7 +341,11 @@ export const createOrder = async (id: string, description: string, destinationLo
   return order;
 };
 
-export const allocateMetroToOrder = async (orderId: string, metroId: string): Promise<boolean> => {
+export const allocateMetroToOrder = async (
+  orderId: string,
+  metroId: string,
+  method: ScanMethod = 'MANUAL',
+): Promise<boolean> => {
   const db = await initDB();
   const order = await db.get('orders', orderId);
   const metro = await db.get('metros', metroId);
@@ -352,6 +356,7 @@ export const allocateMetroToOrder = async (orderId: string, metroId: string): Pr
   metro.status = 'Allocated';
   metro.orderId = orderId;
   metro.lastScannedAt = new Date().toISOString();
+  metro.lastScanMethod = method;
   await db.put('metros', metro);
 
   // Update order
@@ -368,7 +373,7 @@ export const allocateMetroToOrder = async (orderId: string, metroId: string): Pr
     metroId,
     action: `Allocated to order ${orderId}`,
     locationId: metro.locationId,
-    method: 'MANUAL',
+    method,
     timestamp: new Date().toISOString(),
     userId: 'current-user',
     notes: '',
