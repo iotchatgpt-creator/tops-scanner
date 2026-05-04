@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { DollarSign, Search, Filter } from 'lucide-react';
+import { DollarSign, Search } from 'lucide-react';
 import { getAllGarmentProcessingPrices, type GarmentProcessingPrice } from '../db';
 
 export default function PayoutsTab() {
