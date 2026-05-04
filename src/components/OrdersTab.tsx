@@ -129,6 +129,29 @@ export default function OrdersTab({ onDataChange }: { onDataChange: () => void }
 
             {expanded && (
               <div style={{ width: '100%', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                <div className="form-label" style={{ marginBottom: '0.4rem' }}>Products Ordered</div>
+                {(!order.items || order.items.length === 0) ? (
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '0.75rem' }}>
+                    No products specified in this work order.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.75rem' }}>
+                    {order.items.map(item => (
+                      <div key={item.id} style={{
+                        display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0.6rem',
+                        background: '#f8fafc', borderRadius: '6px', fontSize: '0.82rem'
+                      }}>
+                        <div>
+                          <strong>{item.textileProductId}</strong> (Plant {item.plantId})
+                        </div>
+                        <div style={{ color: 'var(--text-muted)' }}>
+                          Qty: {item.quantity} (Shipped: {item.shippedQuantity})
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
                 <div className="form-label">Allocated Metros</div>
                 {orderMetros.length === 0 ? (
                   <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>

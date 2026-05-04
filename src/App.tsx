@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { ScanBarcode, Package, MapPin, BarChart3, RotateCcw, Smartphone } from 'lucide-react';
+import { ScanBarcode, Package, MapPin, BarChart3, RotateCcw, Smartphone, DollarSign } from 'lucide-react';
 import { getDashboardStats, resetDatabase } from './db';
 import MetroScanTab from './components/MetroScanTab';
 import InventoryTab from './components/InventoryTab';
 import OrdersTab from './components/OrdersTab';
 import LocationsTab from './components/LocationsTab';
+import PayoutsTab from './components/PayoutsTab';
 
-type ModuleTab = 'scan' | 'inventory' | 'orders' | 'locations';
+type ModuleTab = 'scan' | 'inventory' | 'orders' | 'locations' | 'payouts';
 
 function App() {
   const [tab, setTab] = useState<ModuleTab>('scan');
@@ -120,6 +121,7 @@ function App() {
           ['inventory', BarChart3, 'Inventory'],
           ['orders', Package, 'Orders'],
           ['locations', MapPin, 'Locations'],
+          ['payouts', DollarSign, 'Payouts'],
         ] as const).map(([key, Icon, label]) => (
           <button key={key} className={`module-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key as ModuleTab)}>
             <Icon size={15} /> {label}
@@ -148,6 +150,7 @@ function App() {
         {tab === 'inventory' && <InventoryTab key={`inv-${refreshKey}`} />}
         {tab === 'orders' && <OrdersTab onDataChange={refresh} key={`ord-${refreshKey}`} />}
         {tab === 'locations' && <LocationsTab key={`loc-${refreshKey}`} />}
+        {tab === 'payouts' && <PayoutsTab key={`pay-${refreshKey}`} />}
       </div>
     </div>
   );

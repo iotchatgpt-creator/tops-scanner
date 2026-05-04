@@ -31,6 +31,15 @@ export interface Metro {
   createdAt: string;
 }
 
+export interface OrderTextileProduct {
+  id: string; // Maps to orderTextileProductId
+  textileProductId: string;
+  plantId: number;
+  quantity: number;
+  shippedQuantity: number;
+  processingPriceAmount: number;
+}
+
 export interface Order {
   id: string; // Maps to orderId
   description: string;
@@ -45,6 +54,7 @@ export interface Order {
   orderCostCenterCode: string;
   plantCode: string;
   metroIds: string[];
+  items: OrderTextileProduct[]; // Represents the items being ordered
 }
 
 export interface Location {
@@ -118,8 +128,8 @@ const SEED_METROS: Metro[] = [
 ];
 
 const SEED_ORDERS: Order[] = [
-  { id: 'ORD-001', description: 'Building 1 Weekly Linen Restock', status: 'InTransit', locationId: 'LOC-STR-01', orderTypeId: 1, locationDropZoneId: 'DZ-01', wbsElementId: 'WBS-100', orderDateTime: new Date(Date.now() - 2 * 86400000).toISOString(), orderDueDate: new Date(Date.now() - 1800000).toISOString(), orderProcessingTotalPriceAmount: 150.00, orderCostCenterCode: 'CC-501', plantCode: 'PLT-100', metroIds: ['MTR-003', 'MTR-004'] },
-  { id: 'ORD-002', description: 'Recreation Center Towel Supply', status: 'Delivered', locationId: 'LOC-STR-03', orderTypeId: 1, locationDropZoneId: 'DZ-02', wbsElementId: 'WBS-101', orderDateTime: new Date(Date.now() - 5 * 86400000).toISOString(), orderDueDate: new Date(Date.now() - 86400000).toISOString(), orderProcessingTotalPriceAmount: 45.50, orderCostCenterCode: 'CC-503', plantCode: 'PLT-100', metroIds: ['MTR-005'] },
+  { id: 'ORD-001', description: 'Building 1 Weekly Linen Restock', status: 'InTransit', locationId: 'LOC-STR-01', orderTypeId: 1, locationDropZoneId: 'DZ-01', wbsElementId: 'WBS-100', orderDateTime: new Date(Date.now() - 2 * 86400000).toISOString(), orderDueDate: new Date(Date.now() - 1800000).toISOString(), orderProcessingTotalPriceAmount: 150.00, orderCostCenterCode: 'CC-501', plantCode: 'PLT-100', metroIds: ['MTR-003', 'MTR-004'], items: [{ id: 'OTP-1', textileProductId: 'PROD-TOWEL', plantId: 100, quantity: 150, shippedQuantity: 150, processingPriceAmount: 22.5 }] },
+  { id: 'ORD-002', description: 'Recreation Center Towel Supply', status: 'Delivered', locationId: 'LOC-STR-03', orderTypeId: 1, locationDropZoneId: 'DZ-02', wbsElementId: 'WBS-101', orderDateTime: new Date(Date.now() - 5 * 86400000).toISOString(), orderDueDate: new Date(Date.now() - 86400000).toISOString(), orderProcessingTotalPriceAmount: 45.50, orderCostCenterCode: 'CC-503', plantCode: 'PLT-100', metroIds: ['MTR-005'], items: [{ id: 'OTP-2', textileProductId: 'PROD-SHEET', plantId: 100, quantity: 50, shippedQuantity: 50, processingPriceAmount: 12.5 }] },
 ];
 
 const SEED_PAYOUTS: GarmentProcessingPrice[] = [
@@ -284,7 +294,8 @@ export const createOrder = async (id: string, description: string, destinationLo
     orderDueDate: new Date().toISOString(),
     orderProcessingTotalPriceAmount: 0.0,
     orderCostCenterCode: 'UNKNOWN',
-    plantCode: 'UNKNOWN'
+    plantCode: 'UNKNOWN',
+    items: []
   };
   await db.put('orders', order);
   return order;
@@ -388,6 +399,11 @@ export const getAllScanEvents = async (): Promise<ScanEvent[]> => {
   const db = await initDB();
   const all = await db.getAll('scanEvents');
   return all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+};
+
+export const getAllGarmentProcessingPrices = async (): Promise<GarmentProcessingPrice[]> => {
+  const db = await initDB();
+  return await db.getAll('garmentProcessingPrices');
 };
 
 // ── Inventory Helpers ──
