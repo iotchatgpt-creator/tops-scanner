@@ -88,6 +88,13 @@ export interface ScanEvent {
   notes: string;
 }
 
+/** Maps a physical UHF tag (EPC hex, etc.) to a logical metro id (e.g. MTR-001). */
+export interface RfidAlias {
+  tagId: string;
+  metroId: string;
+  createdAt: string;
+}
+
 // ── DB Schema ──
 
 interface ScannerDB extends DBSchema {
@@ -96,9 +103,21 @@ interface ScannerDB extends DBSchema {
   locations: { key: string; value: Location };
   garmentProcessingPrices: { key: string; value: GarmentProcessingPrice };
   scanEvents: { key: string; value: ScanEvent; indexes: { 'by-metro': string; 'by-timestamp': string } };
+  rfidAliases: { key: string; value: RfidAlias };
 }
 
 let dbPromise: Promise<IDBPDatabase<ScannerDB>>;
+
+/** Trim control chars; normalize line endings from Bluetooth HID wedges. */
+export const normalizeRfidInput = (raw: string): string =>
+  raw.replace(/\u0000/g, '').trim().replace(/[\r\n\u001d\u001e]+$/, '');
+
+/** Canonical key for alias storage (uppercase hex EPCs; otherwise trimmed as-is). */
+export const canonicalRfidTag = (raw: string): string => {
+  const n = normalizeRfidInput(raw);
+  if (/^[0-9A-Fa-f]+$/.test(n) && n.length >= 8) return n.toUpperCase();
+  return n;
+};
 
 // ── Seed Data ──
 
@@ -141,8 +160,8 @@ const SEED_PAYOUTS: GarmentProcessingPrice[] = [
 
 export const initDB = async () => {
   if (!dbPromise) {
-    dbPromise = openDB<ScannerDB>('TOPSScannerDB', 1, {
-      upgrade(db) {
+    dbPromise = openDB<ScannerDB>('TOPSScannerDB', 2, {
+      upgrade(db, oldVersion) {
         // Metros
         if (!db.objectStoreNames.contains('metros')) {
           db.createObjectStore('metros', { keyPath: 'id' });
@@ -164,6 +183,9 @@ export const initDB = async () => {
           const store = db.createObjectStore('scanEvents', { keyPath: 'id' });
           store.createIndex('by-metro', 'metroId');
           store.createIndex('by-timestamp', 'timestamp');
+        }
+        if (oldVersion < 2 && !db.objectStoreNames.contains('rfidAliases')) {
+          db.createObjectStore('rfidAliases', { keyPath: 'tagId' });
         }
       },
     });
@@ -202,14 +224,32 @@ export const getMetro = async (id: string): Promise<Metro | undefined> => {
   return db.get('metros', id);
 };
 
+export const getRfidAliasMetroId = async (rawTag: string): Promise<string | undefined> => {
+  const db = await initDB();
+  const key = canonicalRfidTag(rawTag);
+  const row = await db.get('rfidAliases', key);
+  return row?.metroId;
+};
+
+export const setRfidAlias = async (rawTag: string, metroId: string): Promise<void> => {
+  const db = await initDB();
+  const tagId = canonicalRfidTag(rawTag);
+  await db.put('rfidAliases', {
+    tagId,
+    metroId,
+    createdAt: new Date().toISOString(),
+  });
+};
+
 export const findMetroByCode = async (code: string): Promise<Metro | undefined> => {
   const db = await initDB();
-  // Try exact match first
-  let metro = await db.get('metros', code);
+  const normalized = normalizeRfidInput(code);
+  const viaAlias = await getRfidAliasMetroId(normalized);
+  const lookupId = viaAlias ?? normalized;
+  let metro = await db.get('metros', lookupId);
   if (metro) return metro;
-  // Try case-insensitive search
   const all = await db.getAll('metros');
-  return all.find(m => m.id.toLowerCase() === code.toLowerCase());
+  return all.find(m => m.id.toLowerCase() === lookupId.toLowerCase());
 };
 
 export const updateMetroStatus = async (
@@ -463,6 +503,9 @@ export const resetDatabase = async () => {
   await db.clear('locations');
   await db.clear('garmentProcessingPrices');
   await db.clear('scanEvents');
+  if (db.objectStoreNames.contains('rfidAliases')) {
+    await db.clear('rfidAliases');
+  }
   // Re-seed
   const tx = db.transaction(['metros', 'orders', 'locations', 'garmentProcessingPrices', 'scanEvents'], 'readwrite');
   for (const loc of SEED_LOCATIONS) await tx.objectStore('locations').put(loc);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import {
   Radio, QrCode, Search, Loader2, ArrowLeft, ScanBarcode,
@@ -7,7 +7,9 @@ import {
 import {
   type Metro, type MetroStatus, type ScanMethod,
   findMetroByCode, updateMetroStatus, getMetroScanHistory, getAllLocations, getAllOrders,
-  allocateMetroToOrder, getLocation, type ScanEvent, type Location, type Order
+  allocateMetroToOrder, getLocation, getOrder, getAllMetros, setRfidAlias,
+  normalizeRfidInput,
+  type ScanEvent, type Location, type Order,
 } from '../db';
 
 // Which actions are available for each metro status
@@ -43,18 +45,36 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
   const [actionLocationId, setActionLocationId] = useState('');
   const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraInitError, setCameraInitError] = useState('');
+  const [lastRfidRaw, setLastRfidRaw] = useState<string | null>(null);
+  const [pendingLinkTag, setPendingLinkTag] = useState<string | null>(null);
+  const [linkTargetMetroId, setLinkTargetMetroId] = useState('');
+  const [metrosForLink, setMetrosForLink] = useState<Metro[]>([]);
+  const [linkedOrder, setLinkedOrder] = useState<Order | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerStartGuard = useRef(false);
+  const rfidInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => { getAllLocations().then(setLocations); }, []);
 
-  // ── NFC / RFID auto-detect: auto-lookup if metro ID came from NFC tag ──
   useEffect(() => {
-    if (initialMetroId) {
-      lookupMetro(initialMetroId, 'RFID');
-      if (onInitialConsumed) onInitialConsumed();
+    if (!metro?.orderId) {
+      setLinkedOrder(null);
+      return;
     }
-  }, [initialMetroId]);
+    void getOrder(metro.orderId).then(o => setLinkedOrder(o ?? null));
+  }, [metro?.orderId]);
+
+  useEffect(() => {
+    if (!pendingLinkTag) {
+      setMetrosForLink([]);
+      return;
+    }
+    void getAllMetros().then(ms => {
+      const sorted = ms.sort((a, b) => a.id.localeCompare(b.id));
+      setMetrosForLink(sorted);
+      setLinkTargetMetroId(prev => (prev && sorted.some(m => m.id === prev) ? prev : (sorted[0]?.id ?? '')));
+    });
+  }, [pendingLinkTag]);
 
   const isCameraMode = scanMode === 'barcode' || scanMode === 'qrcode';
 
@@ -191,22 +211,66 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     }
   };
 
-  const lookupMetro = async (code: string, _method: ScanMethod) => {
-    if (!code.trim()) return;
-    setIsLoading(true); setError('');
-    await new Promise(r => setTimeout(r, 400));
-    const found = await findMetroByCode(code.trim());
+  const lookupMetro = useCallback(async (code: string, _method: ScanMethod) => {
+    const norm = normalizeRfidInput(code);
+    if (!norm) return;
+    setLastRfidRaw(norm);
+    setIsLoading(true);
+    setError('');
+    setPendingLinkTag(null);
+    const found = await findMetroByCode(norm);
     if (found) {
       setMetro(found);
       const loc = await getLocation(found.locationId);
       setMetroLocation(loc || null);
       const h = await getMetroScanHistory(found.id);
       setHistory(h);
+      setManualCode('');
     } else {
-      setError(`Metro "${code}" not found in the system.`);
+      setError(`Metro or tag "${norm}" not found in the system.`);
+      if (_method === 'RFID' && norm.length >= 4) {
+        setPendingLinkTag(norm);
+      }
     }
     setIsLoading(false);
+  }, []);
+
+  const handleSaveTagLink = async () => {
+    if (!pendingLinkTag || !linkTargetMetroId) return;
+    await setRfidAlias(pendingLinkTag, linkTargetMetroId);
+    setPendingLinkTag(null);
+    setError('');
+    setManualCode('');
+    await lookupMetro(linkTargetMetroId, 'RFID');
   };
+
+  // Bluetooth HID wedge: many readers send EPC without Enter; treat idle after keystrokes as end-of-scan.
+  useEffect(() => {
+    if (scanMode !== 'rfid' || metro || error) return;
+    const v = normalizeRfidInput(manualCode);
+    if (!v) return;
+    const hexEPC = /^[0-9A-Fa-f]+$/.test(v) && v.length >= 8;
+    const metroSku = /^MTR-\d+$/i.test(v);
+    if (!hexEPC && !metroSku) return;
+    const t = window.setTimeout(() => {
+      void lookupMetro(v, 'RFID');
+    }, 140);
+    return () => window.clearTimeout(t);
+  }, [manualCode, scanMode, metro, error, lookupMetro]);
+
+  // ── NFC / RFID auto-detect: auto-lookup if metro ID came from NFC tag ──
+  useEffect(() => {
+    if (initialMetroId) {
+      void lookupMetro(initialMetroId, 'RFID');
+      if (onInitialConsumed) onInitialConsumed();
+    }
+  }, [initialMetroId, lookupMetro]);
+
+  useEffect(() => {
+    if (scanMode === 'rfid' && !metro && !error) {
+      rfidInputRef.current?.focus();
+    }
+  }, [scanMode, metro, error]);
 
   const handleAction = async (nextStatus: MetroStatus, nextType: 'Clean' | 'Soiled', actionLabel: string) => {
     if (!metro) return;
@@ -236,6 +300,9 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     setManualCode('');
     setActionLocationId('');
     setCameraInitError('');
+    setLastRfidRaw(null);
+    setPendingLinkTag(null);
+    setLinkTargetMetroId('');
   };
 
   const actions = metro ? (STATUS_ACTIONS[metro.status] || []) : [];
@@ -291,14 +358,44 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       {/* Manual / RFID entry */}
       {!metro && !error && (
         <div className="card">
-          <div className="card-header"><span className="card-title">Enter metro ID</span></div>
+          <div className="card-header"><span className="card-title">{scanMode === 'rfid' ? 'RFID / keyboard wedge' : 'Enter metro ID'}</span></div>
+          {scanMode === 'rfid' && (
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+              Pair your wearable reader in <strong>Bluetooth HID (keyboard)</strong> mode. Focus this page, select <strong>RFID</strong> above, then pull the trigger — the EPC appears here. First time only: if the tag is unknown, link it to a metro below, then use <strong>Allocate to Order</strong> on the metro card to attach a work order.
+            </p>
+          )}
+          {scanMode === 'rfid' && lastRfidRaw && (
+            <div style={{ fontSize: '0.8rem', marginBottom: '0.6rem', color: 'var(--text-muted)' }}>
+              Last lookup: <code style={{ color: 'var(--text-main)', wordBreak: 'break-all' }}>{lastRfidRaw}</code>
+            </div>
+          )}
           <div className="search-row">
-            <input className="input-field" value={manualCode} onChange={e => setManualCode(e.target.value)}
-              placeholder={scanMode === 'rfid' ? 'Waiting for RFID input…' : 'e.g. MTR-001'}
+            <input
+              ref={scanMode === 'rfid' ? rfidInputRef : undefined}
+              className="input-field"
+              value={manualCode}
+              onChange={e => setManualCode(e.target.value)}
+              placeholder={scanMode === 'rfid' ? 'Waiting for RFID / EPC input…' : 'e.g. MTR-001'}
               autoFocus={scanMode === 'rfid'}
-              onKeyDown={e => { if (e.key === 'Enter') lookupMetro(manualCode, scanMode === 'rfid' ? 'RFID' : 'MANUAL'); }} />
-            <button className="btn btn-primary" disabled={isLoading || !manualCode.trim()}
-              onClick={() => lookupMetro(manualCode, scanMode === 'rfid' ? 'RFID' : 'MANUAL')}>
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void lookupMetro(manualCode, scanMode === 'rfid' ? 'RFID' : 'MANUAL');
+                }
+              }}
+              onPaste={e => {
+                if (scanMode !== 'rfid') return;
+                const text = e.clipboardData.getData('text/plain');
+                const norm = normalizeRfidInput(text);
+                if (norm.length >= 4) {
+                  e.preventDefault();
+                  setManualCode(norm);
+                  window.setTimeout(() => void lookupMetro(norm, 'RFID'), 0);
+                }
+              }}
+            />
+            <button type="button" className="btn btn-primary" disabled={isLoading || !manualCode.trim()}
+              onClick={() => void lookupMetro(manualCode, scanMode === 'rfid' ? 'RFID' : 'MANUAL')}>
               {isLoading ? <Loader2 className="animate-spin" size={15} /> : <><Search size={15} /> Search</>}
             </button>
           </div>
@@ -314,7 +411,19 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
             </div>
             <div><div style={{ fontWeight: 700 }}>{error}</div><div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Check the metro ID and try again.</div></div>
           </div>
-          <button className="btn btn-outline" onClick={resetView}><ArrowLeft size={14} /> Scan Another</button>
+          {pendingLinkTag && metrosForLink.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginBottom: '1rem' }}>
+              <div className="form-label">Link this tag to a metro (saved on this device)</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.5rem', wordBreak: 'break-all' }}>Tag: <code>{pendingLinkTag}</code></div>
+              <select className="input-field mb-1" value={linkTargetMetroId} onChange={e => setLinkTargetMetroId(e.target.value)}>
+                {metrosForLink.map(m => <option key={m.id} value={m.id}>{m.id} — {m.contents}</option>)}
+              </select>
+              <button type="button" className="btn btn-primary" disabled={!linkTargetMetroId} onClick={() => void handleSaveTagLink()}>
+                Save link &amp; open metro
+              </button>
+            </div>
+          )}
+          <button type="button" className="btn btn-outline" onClick={resetView}><ArrowLeft size={14} /> Scan Another</button>
         </div>
       )}
 
@@ -339,7 +448,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
               <div className="detail-grid">
                 <div className="detail-item"><div className="detail-label">Location</div><div className="detail-value"><MapPin size={13} style={{ display: 'inline', verticalAlign: '-2px' }} /> {metroLocation?.name || metro.locationId}</div></div>
                 <div className="detail-item"><div className="detail-label">Area</div><div className="detail-value">{metroLocation?.area || '—'}</div></div>
-                <div className="detail-item"><div className="detail-label">Order</div><div className="detail-value">{metro.orderId ? <><Package size={13} style={{ display: 'inline', verticalAlign: '-2px' }} /> {metro.orderId}</> : '— None —'}</div></div>
+                <div className="detail-item"><div className="detail-label">Work order</div><div className="detail-value">{metro.orderId ? <><Package size={13} style={{ display: 'inline', verticalAlign: '-2px' }} /> {metro.orderId}{linkedOrder?.description ? ` — ${linkedOrder.description}` : ''}</> : '— None —'}</div></div>
                 <div className="detail-item"><div className="detail-label">Last Scanned</div><div className="detail-value"><Clock size={13} style={{ display: 'inline', verticalAlign: '-2px' }} /> {new Date(metro.lastScannedAt).toLocaleString()}</div></div>
               </div>
 
