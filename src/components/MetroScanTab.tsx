@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats, type Html5QrcodeResult } from 'html5-qrcode';
 import {
   Radio, QrCode, Search, Loader2, ArrowLeft, ScanBarcode,
   CheckCircle, XCircle, MapPin, Package, Clock, ChevronRight
@@ -11,6 +11,22 @@ import {
   normalizeRfidInput,
   type ScanEvent, type Location, type Order,
 } from '../db';
+
+/** 1D/2D codes allowed in Barcode tab (not QR — QR is QR tab only). */
+const BARCODE_SCAN_FORMATS: Html5QrcodeSupportedFormats[] = [
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.CODABAR,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.ITF,
+  Html5QrcodeSupportedFormats.DATA_MATRIX,
+];
+
+const BARCODE_FORMAT_SET = new Set(BARCODE_SCAN_FORMATS);
 
 // Which actions are available for each metro status
 const STATUS_ACTIONS: Record<MetroStatus, { label: string; nextStatus: MetroStatus; nextType: 'Clean' | 'Soiled'; color: string; desc: string }[]> = {
@@ -51,7 +67,8 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
   const [metrosForLink, setMetrosForLink] = useState<Metro[]>([]);
   const [linkedOrder, setLinkedOrder] = useState<Order | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scannerStartGuard = useRef(false);
+  /** Bumped when the camera effect cleans up or mode changes, so stale async starts do not block or clobber the active session. */
+  const scanSessionRef = useRef(0);
   const rfidInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => { getAllLocations().then(setLocations); }, []);
@@ -86,7 +103,10 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     }
     setCameraInitError('');
     void startScanner();
-    return () => { void stopScanner(); };
+    return () => {
+      scanSessionRef.current += 1;
+      void stopScanner();
+    };
   }, [scanMode, metro, error, initialMetroId]);
 
   const cameraErrorMessage = (e: unknown): string => {
@@ -115,8 +135,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
   };
 
   const startScanner = async () => {
-    if (scannerStartGuard.current) return;
-    scannerStartGuard.current = true;
+    const sessionAtStart = scanSessionRef.current;
     setCameraInitError('');
     setCameraStarting(true);
     try {
@@ -129,37 +148,55 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       if (scannerRef.current?.isScanning) try { await scannerRef.current.stop(); } catch (_) {}
       if (scannerRef.current) try { scannerRef.current.clear(); } catch (_) {}
       
-      const formatsToSupport = scanMode === 'barcode' 
-        ? [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.ITF,
-          ]
+      const mode = scanMode;
+      const formatsToSupport = mode === 'barcode'
+        ? BARCODE_SCAN_FORMATS
         : [Html5QrcodeSupportedFormats.QR_CODE];
 
-      scannerRef.current = new Html5Qrcode('reader', { 
-        formatsToSupport, 
-        useBarCodeDetectorIfSupported: true,
-        verbose: false 
+      // Native BarcodeDetector is helpful for QR but often weaker for 1D; use ZXing for barcode-only mode.
+      const useNativeDetector = mode === 'qrcode';
+
+      const instance = new Html5Qrcode('reader', {
+        formatsToSupport,
+        useBarCodeDetectorIfSupported: useNativeDetector,
+        verbose: false,
       });
+      scannerRef.current = instance;
+
       const cfg = {
         fps: 10,
         qrbox: (vw: number, vh: number) => {
-          if (scanMode === 'barcode') {
-            return { width: Math.min(vw * 0.9, 600), height: 150 };
+          if (mode === 'barcode') {
+            const w = Math.min(vw * 0.92, 640);
+            const h = Math.min(Math.max(160, Math.floor(vh * 0.28)), 260);
+            return { width: w, height: h };
           }
           const edge = Math.min(vw, vh, 720);
           const box = Math.max(140, Math.floor(edge * 0.72));
           return { width: box, height: box };
         },
       };
-      const onOk = (text: string) => { void stopScanner(); void lookupMetro(text, 'CAMERA'); };
+
+      const onOk = (text: string, result: Html5QrcodeResult) => {
+        const fmt = result.result.format?.format;
+        if (mode === 'qrcode') {
+          if (fmt !== Html5QrcodeSupportedFormats.QR_CODE) return;
+        } else {
+          if (fmt === Html5QrcodeSupportedFormats.QR_CODE) return;
+          if (fmt !== undefined && !BARCODE_FORMAT_SET.has(fmt)) return;
+        }
+        void stopScanner();
+        void lookupMetro(text, 'CAMERA');
+      };
+
       const devices = await Html5Qrcode.getCameras();
-      
-      if (!scannerRef.current) return; // Abort if stopped while waiting for cameras
+
+      if (sessionAtStart !== scanSessionRef.current) {
+        try { if (instance.isScanning) await instance.stop(); } catch (_) {}
+        try { instance.clear(); } catch (_) {}
+        if (scannerRef.current === instance) scannerRef.current = null;
+        return;
+      }
 
       const preferredId = pickPreferredCameraId(devices);
       const tryOrder: Array<string | { facingMode: string }> = preferredId
@@ -168,37 +205,44 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       let lastErr: unknown;
       let started = false;
       for (const cam of tryOrder) {
-        if (!scannerRef.current) break; // Abort if stopped during the loop
+        if (sessionAtStart !== scanSessionRef.current || scannerRef.current !== instance) break;
         try {
-          await scannerRef.current.start(cam as any, cfg, onOk, () => {});
+          await instance.start(cam as any, cfg, onOk, () => {});
           started = true;
           break;
         } catch (err) {
           lastErr = err;
           try {
-            if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+            if (instance.isScanning) await instance.stop();
           } catch (_) {}
           try {
-            scannerRef.current?.clear();
+            instance.clear();
           } catch (_) {}
         }
       }
-      if (!started && scannerRef.current) throw lastErr ?? new Error('Camera start failed');
+      if (sessionAtStart !== scanSessionRef.current) {
+        try { if (instance.isScanning) await instance.stop(); } catch (_) {}
+        try { instance.clear(); } catch (_) {}
+        if (scannerRef.current === instance) scannerRef.current = null;
+        return;
+      }
+      if (!started && scannerRef.current === instance) throw lastErr ?? new Error('Camera start failed');
       setIsScanning(true);
     } catch (e: unknown) {
-      console.error(e);
-      setIsScanning(false);
-      setCameraInitError(cameraErrorMessage(e));
-      try {
-        if (scannerRef.current?.isScanning) await scannerRef.current.stop();
-      } catch (_) {}
-      try {
-        scannerRef.current?.clear();
-      } catch (_) {}
-      scannerRef.current = null;
+      if (sessionAtStart === scanSessionRef.current) {
+        console.error(e);
+        setIsScanning(false);
+        setCameraInitError(cameraErrorMessage(e));
+        try {
+          if (scannerRef.current?.isScanning) await scannerRef.current.stop();
+        } catch (_) {}
+        try {
+          scannerRef.current?.clear();
+        } catch (_) {}
+        scannerRef.current = null;
+      }
     } finally {
       setCameraStarting(false);
-      scannerStartGuard.current = false;
     }
   };
 

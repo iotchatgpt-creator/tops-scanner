@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TOPS Metro Tracker — Demo</title>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --accent: #5ce0d2;
+      --header: #1a1f36;
+      --primary: #2563eb;
+      --text: #1e293b;
+      --muted: #64748b;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --bg: #f1f5f9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.55;
+      font-size: 0.95rem;
+    }
+    .wrap {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+    }
+    header {
+      background: linear-gradient(135deg, var(--header) 0%, #2d1b69 100%);
+      color: #f8fafc;
+      padding: 2rem 1.25rem 2.25rem;
+      margin: -1.5rem -1.25rem 2rem;
+      border-radius: 0 0 14px 14px;
+      text-align: center;
+    }
+    header h1 {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    header h1 span { color: var(--accent); }
+    header p {
+      margin-top: 0.65rem;
+      opacity: 0.9;
+      max-width: 38rem;
+      margin-left: auto;
+      margin-right: auto;
+      font-size: 0.92rem;
+    }
+    .badge {
+      display: inline-block;
+      margin-top: 0.75rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: rgba(92, 224, 210, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(92, 224, 210, 0.35);
+    }
+    .actions {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+    .actions a {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      text-decoration: none;
+    }
+    .actions a.primary {
+      background: var(--accent);
+      color: #0f172a;
+    }
+    .actions a.ghost {
+      background: rgba(255,255,255,0.12);
+      color: #f8fafc;
+      border: 1px solid rgba(255,255,255,0.25);
+    }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.35rem;
+      margin-bottom: 1.1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 0.65rem;
+      color: var(--header);
+    }
+    ul { margin-left: 1.15rem; }
+    ul li { margin-bottom: 0.35rem; }
+    .diagram-wrap {
+      overflow-x: auto;
+      margin: 0.75rem 0 0.25rem;
+      background: #f8fafc;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+    }
+    .diagram-wrap svg { display: block; min-width: 640px; width: 100%; height: auto; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.65rem;
+      margin-top: 0.5rem;
+    }
+    .tile {
+      padding: 0.75rem 0.85rem;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .tile strong { display: block; margin-bottom: 0.2rem; color: var(--primary); font-size: 0.8rem; }
+    .pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+    .pill {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    code {
+      font-family: ui-monospace, monospace;
+      font-size: 0.82em;
+      background: #f1f5f9;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    footer {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1><span>TOPS</span> Metro Tracker</h1>
+      <p><strong>tops-scanner</strong> — proof-of-concept PWA for scanning and tracking textile <strong>Metros</strong> (carts / bins) through clean and soiled lifecycle states. Runs client-side with IndexedDB for demos.</p>
+      <span class="badge">Demo one-pager</span>
+      <div class="actions">
+        <a class="primary" href="/">Open live app</a>
+        <a class="ghost" href="https://github.com/ksahukaraus1/TOPS" target="_blank" rel="noopener">TOPS on GitHub</a>
+      </div>
+    </header>
+
+    <section aria-labelledby="what">
+      <h2 id="what">What it demonstrates</h2>
+      <ul>
+        <li><strong>Metro Scan</strong> — barcode/QR camera, NFC (Web NFC + iOS URL tags), RFID keyboard wedge; workflow actions per state.</li>
+        <li><strong>Orders</strong> — create work orders; expand an order to scan/link metros without leaving the tab.</li>
+        <li><strong>Metros &amp; dashboard</strong> — stat cards filter the metro list; expandable rows show scan history; RFID EPC → metro aliases stored locally.</li>
+        <li><strong>Inventory &amp; locations</strong> — read-only views over seeded demo data.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="workflow">
+      <h2 id="workflow">Metro lifecycle workflow</h2>
+      <p style="color: var(--muted); font-size: 0.88rem; margin-bottom: 0.5rem;">Typical state transitions enforced in the POC (clean delivery on top, soiled return and plant loop below). Arrows show the main progression.</p>
+      <div class="diagram-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" role="img" aria-labelledby="svgTitle svgDesc">
+          <title id="svgTitle">Metro lifecycle workflow</title>
+          <desc id="svgDesc">Clean flow from Available through In Transit to At Storage; then soiled path to plant and cleaning back to Available.</desc>
+          <defs>
+            <marker id="mArr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <polygon points="0 0, 7 3.5, 0 7" fill="#64748b" />
+            </marker>
+            <marker id="mArrD" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <polygon points="0 0, 7 3.5, 0 7" fill="#d97706" />
+            </marker>
+          </defs>
+
+          <text x="8" y="18" fill="#64748b" font-size="11" font-weight="700" letter-spacing="0.04em">CLEAN TEXTILE FLOW</text>
+
+          <rect x="8" y="28" width="86" height="34" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+          <text x="51" y="49" text-anchor="middle" fill="#14532d" font-size="11" font-weight="600">Available</text>
+
+          <line x1="94" y1="45" x2="118" y2="45" stroke="#64748b" stroke-width="1.5" marker-end="url(#mArr)"/>
+
+          <rect x="118" y="28" width="86" height="34" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+          <text x="161" y="49" text-anchor="middle" fill="#1e3a8a" font-size="11" font-weight="600">Allocated</text>
+
+          <line x1="204" y1="45" x2="228" y2="45" stroke="#64748b" stroke-width="1.5" marker-end="url(#mArr)"/>
+
+          <rect x="228" y="28" width="78" height="34" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+          <text x="267" y="49" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">Pickup</text>
+
+          <line x1="306" y1="45" x2="330" y2="45" stroke="#64748b" stroke-width="1.5" marker-end="url(#mArr)"/>
+
+          <rect x="330" y="28" width="92" height="34" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+          <text x="376" y="49" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">In Transit</text>
+
+          <line x1="422" y1="45" x2="446" y2="45" stroke="#64748b" stroke-width="1.5" marker-end="url(#mArr)"/>
+
+          <rect x="446" y="28" width="94" height="34" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+          <text x="493" y="49" text-anchor="middle" fill="#14532d" font-size="11" font-weight="600">At Storage</text>
+
+          <text x="8" y="108" fill="#64748b" font-size="11" font-weight="700" letter-spacing="0.04em">SOILED RETURN &amp; PLANT</text>
+
+          <line x1="493" y1="62" x2="493" y2="118" stroke="#64748b" stroke-width="1.5" marker-end="url(#mArr)"/>
+          <text x="500" y="94" fill="#64748b" font-size="9">mark soiled</text>
+
+          <rect x="446" y="118" width="94" height="34" rx="6" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+          <text x="493" y="139" text-anchor="middle" fill="#991b1b" font-size="11" font-weight="600">Soiled</text>
+
+          <line x1="540" y1="135" x2="564" y2="135" stroke="#d97706" stroke-width="1.5" marker-end="url(#mArrD)"/>
+
+          <rect x="564" y="118" width="104" height="34" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+          <text x="616" y="139" text-anchor="middle" fill="#92400e" font-size="11" font-weight="600">Soiled Transit</text>
+
+          <line x1="668" y1="135" x2="692" y2="135" stroke="#d97706" stroke-width="1.5" marker-end="url(#mArrD)"/>
+
+          <rect x="692" y="118" width="78" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+          <text x="731" y="139" text-anchor="middle" fill="#5b21b6" font-size="11" font-weight="600">At Plant</text>
+
+          <line x1="770" y1="135" x2="794" y2="135" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#mArr)"/>
+
+          <rect x="794" y="118" width="78" height="34" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+          <text x="833" y="132" text-anchor="middle" fill="#5b21b6" font-size="10" font-weight="600">Cleaning</text>
+
+          <line x1="833" y1="152" x2="833" y2="188" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#mArr)"/>
+
+          <rect x="790" y="188" width="86" height="34" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+          <text x="833" y="209" text-anchor="middle" fill="#14532d" font-size="10" font-weight="600">Available</text>
+
+          <path d="M 790 205 L 51 205 L 51 45" stroke="#94a3b8" stroke-width="1.2" fill="none" stroke-dasharray="5 4" marker-end="url(#mArr)"/>
+          <text x="400" y="198" text-anchor="middle" fill="#64748b" font-size="9">cleaned → return to clean buffer (cycle)</text>
+        </svg>
+      </div>
+    </section>
+
+    <section aria-labelledby="scan">
+      <h2 id="scan">Scan channels</h2>
+      <div class="grid">
+        <div class="tile"><strong>Camera</strong>html5-qrcode — barcodes &amp; QR. Needs HTTPS or localhost.</div>
+        <div class="tile"><strong>NFC</strong>Web NFC (Android) or NTAG URL → <code>?metro=</code> (iOS).</div>
+        <div class="tile"><strong>RFID</strong>Bluetooth HID wedge; optional EPC → metro mapping in IndexedDB.</div>
+      </div>
+    </section>
+
+    <section aria-labelledby="stack">
+      <h2 id="stack">Tech stack</h2>
+      <p style="font-size: 0.88rem; color: var(--muted); margin-bottom: 0.35rem;">Single-page app (this file is static HTML; the product is React + Vite).</p>
+      <div class="pills">
+        <span class="pill">React 18</span>
+        <span class="pill">TypeScript</span>
+        <span class="pill">Vite 5</span>
+        <span class="pill">vite-plugin-pwa</span>
+        <span class="pill">IndexedDB (idb)</span>
+        <span class="pill">html5-qrcode</span>
+        <span class="pill">lucide-react</span>
+      </div>
+    </section>
+
+    <section aria-labelledby="run">
+      <h2 id="run">Run locally</h2>
+      <p style="font-size: 0.88rem;">From <code>tops-scanner</code>: <code>npm install</code> → <code>npm run dev</code> → open the app URL. This page: <code>/demo-presentation.html</code>.</p>
+    </section>
+
+    <footer>TOPS Metro Tracker demo · IndexedDB POC; production target per platform specs: Scanner API + shared auth + Aurora.</footer>
+  </div>
+</body>
+</html>

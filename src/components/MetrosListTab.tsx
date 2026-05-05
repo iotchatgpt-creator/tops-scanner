@@ -140,7 +140,12 @@ export default function MetrosListTab({
                 <th>Work order</th>
                 <th>Contents</th>
                 <th>RFID tag map</th>
-                <th>Last scanned</th>
+                <th>
+                  <div>Last scanned</div>
+                  <div style={{ fontWeight: 400, fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0, marginTop: '0.25rem', lineHeight: 1.35, maxWidth: '11rem' }}>
+                    Local time of last lookup/scan. Method: <strong>CAMERA</strong> (barcode/QR), <strong>RFID</strong> (keyboard wedge), or <strong>MANUAL</strong> (typed).
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
