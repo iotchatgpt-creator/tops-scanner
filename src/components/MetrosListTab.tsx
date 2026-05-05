@@ -6,6 +6,7 @@ import {
   type Metro, type Location, type Order, type RfidAlias, type ScanEvent,
   type MetroDashboardBucket,
 } from '../db';
+import MetroBarcode from './MetroBarcode';
 
 const BUCKET_LABELS: Record<MetroDashboardBucket, string> = {
   all: 'All metros',
@@ -209,7 +210,8 @@ export default function MetrosListTab({
                             <div><span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Order ID</span><div style={{ fontWeight: 600 }}>{m.orderId ?? '—'}</div></div>
                             <div><span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Last scan method</span><div style={{ fontWeight: 600 }}>{m.lastScanMethod}</div></div>
                           </div>
-                          <div style={{ fontWeight: 700, fontSize: '0.78rem', marginBottom: '0.35rem' }}>Scan history</div>
+                          <MetroBarcode metroId={m.id} />
+                          <div style={{ fontWeight: 700, fontSize: '0.78rem', marginBottom: '0.35rem', marginTop: '0.5rem' }}>Scan history</div>
                           {histEvents.length === 0 ? (
                             <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No scan events yet.</div>
                           ) : (

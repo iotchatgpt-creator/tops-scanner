@@ -112,6 +112,35 @@ let dbPromise: Promise<IDBPDatabase<ScannerDB>>;
 export const normalizeRfidInput = (raw: string): string =>
   raw.replace(/\u0000/g, '').trim().replace(/[\r\n\u001d\u001e]+$/, '');
 
+/** Metro IDs that match seeded barcodes (MTR-001 …); used for labels and barcode-camera mode. */
+export const METRO_BARCODE_ID_PATTERN = /^MTR-\d+$/i;
+
+export function isMetroIdBarcode(value: string): boolean {
+  return METRO_BARCODE_ID_PATTERN.test(normalizeRfidInput(value));
+}
+
+/**
+ * Resolves a camera/QR payload to a lookup key: plain MTR-###, or deep links with ?metro=
+ * (same pattern as NFC URL tags in the README).
+ */
+export function parseMetroIdFromScanPayload(raw: string): string {
+  const n = normalizeRfidInput(raw);
+  if (!n) return '';
+  if (METRO_BARCODE_ID_PATTERN.test(n)) return n;
+  try {
+    const u = new URL(n);
+    const m = u.searchParams.get('metro');
+    if (m && METRO_BARCODE_ID_PATTERN.test(normalizeRfidInput(m))) {
+      return normalizeRfidInput(m);
+    }
+  } catch {
+    // Not an absolute URL — try MTR-### anywhere in the string (e.g. partial URLs)
+  }
+  const embedded = n.match(/MTR-\d+/i);
+  if (embedded) return embedded[0];
+  return n;
+}
+
 /** Canonical key for alias storage (uppercase hex EPCs; otherwise trimmed as-is). */
 export const canonicalRfidTag = (raw: string): string => {
   const n = normalizeRfidInput(raw);

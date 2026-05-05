@@ -8,22 +8,14 @@ import {
   type Metro, type MetroStatus, type ScanMethod,
   findMetroByCode, updateMetroStatus, getMetroScanHistory, getAllLocations, getAllOrders,
   allocateMetroToOrder, getLocation, getOrder, getAllMetros, setRfidAlias,
-  normalizeRfidInput,
+  normalizeRfidInput, isMetroIdBarcode, parseMetroIdFromScanPayload,
   type ScanEvent, type Location, type Order,
 } from '../db';
+import MetroBarcode from './MetroBarcode';
 
-/** 1D/2D codes allowed in Barcode tab (not QR — QR is QR tab only). */
+/** Barcode tab matches printed metro labels — CODE128 only (see MetroBarcode). */
 const BARCODE_SCAN_FORMATS: Html5QrcodeSupportedFormats[] = [
   Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.CODABAR,
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.DATA_MATRIX,
 ];
 
 const BARCODE_FORMAT_SET = new Set(BARCODE_SCAN_FORMATS);
@@ -98,7 +90,9 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
   const isCameraMode = scanMode === 'barcode' || scanMode === 'qrcode';
 
   useEffect(() => {
-    if (!isCameraMode || metro || error || initialMetroId) {
+    // Do not tie the camera to `error`: a failed lookup would unmount #reader and stop scanning,
+    // so users could not retry without "Scan Another". NFC deep-link still uses RFID tab first.
+    if (!isCameraMode || metro || initialMetroId) {
       setCameraInitError('');
       void stopScanner();
       return;
@@ -109,7 +103,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       scanSessionRef.current += 1;
       void stopScanner();
     };
-  }, [scanMode, metro, error, initialMetroId]);
+  }, [scanMode, metro, initialMetroId]);
 
   const cameraErrorMessage = (e: unknown): string => {
     const name = e && typeof e === 'object' && 'name' in e ? String((e as Error).name) : '';
@@ -205,10 +199,15 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
         } else {
           if (fmt === Html5QrcodeSupportedFormats.QR_CODE) return;
           if (fmt !== undefined && !BARCODE_FORMAT_SET.has(fmt)) return;
+          if (!isMetroIdBarcode(text)) return;
         }
+        const code =
+          mode === 'qrcode' ? parseMetroIdFromScanPayload(text) : normalizeRfidInput(text);
+        if (!code) return;
+        if (mode === 'barcode' && !isMetroIdBarcode(code)) return;
         void (async () => {
           await stopScanner();
-          await lookupMetro(text, 'CAMERA');
+          await lookupMetro(code, 'CAMERA');
         })();
       };
 
@@ -267,6 +266,16 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     } finally {
       setCameraStarting(false);
     }
+  };
+
+  const lookupMetroFromManualInput = (raw: string) => {
+    if (scanMode === 'barcode' && !isMetroIdBarcode(raw)) {
+      setError('Barcode mode only reads metro labels (e.g. MTR-001). Use QR Code for other payloads.');
+      return;
+    }
+    const code =
+      scanMode === 'qrcode' ? parseMetroIdFromScanPayload(raw) : normalizeRfidInput(raw);
+    void lookupMetro(code, scanMode === 'rfid' ? 'RFID' : 'MANUAL');
   };
 
   const lookupMetro = useCallback(async (code: string, _method: ScanMethod) => {
@@ -388,8 +397,8 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
         </div>
       </div>
 
-      {/* Camera view */}
-      {!metro && !error && isCameraMode && (
+      {/* Camera view — keep mounted while `error` is set so retries work without "Scan Another" */}
+      {!metro && isCameraMode && (
         <div className="card">
           {cameraInitError ? (
             <div style={{ padding: '1rem 1.1rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
@@ -402,6 +411,11 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
             </div>
           ) : (
             <div className="scanner-container">
+              {scanMode === 'barcode' && (
+                <p style={{ position: 'absolute', bottom: 8, left: 8, right: 8, zIndex: 2, margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.92)', textAlign: 'center', textShadow: '0 1px 2px rgba(0,0,0,0.75)', pointerEvents: 'none' }}>
+                  Metro barcodes only — expects <strong style={{ fontWeight: 700 }}>MTR-###</strong> (CODE128 labels).
+                </p>
+              )}
               <div id="reader" />
               {cameraStarting && (
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', color: '#fff', textAlign: 'center', zIndex: 2, pointerEvents: 'none' }}>
@@ -414,7 +428,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       )}
 
       {/* Manual / RFID entry */}
-      {!metro && !error && (
+      {!metro && (
         <div className="card">
           <div className="card-header"><span className="card-title">{scanMode === 'rfid' ? 'RFID / keyboard wedge' : 'Enter metro ID'}</span></div>
           {scanMode === 'rfid' && (
@@ -438,7 +452,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
               onKeyDown={e => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  void lookupMetro(manualCode, scanMode === 'rfid' ? 'RFID' : 'MANUAL');
+                  lookupMetroFromManualInput(manualCode);
                 }
               }}
               onPaste={e => {
@@ -453,7 +467,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
               }}
             />
             <button type="button" className="btn btn-primary" disabled={isLoading || !manualCode.trim()}
-              onClick={() => void lookupMetro(manualCode, scanMode === 'rfid' ? 'RFID' : 'MANUAL')}>
+              onClick={() => lookupMetroFromManualInput(manualCode)}>
               {isLoading ? <Loader2 className="animate-spin" size={15} /> : <><Search size={15} /> Search</>}
             </button>
           </div>
@@ -503,6 +517,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
             </div>
 
             <div className="metro-detail-body">
+              <MetroBarcode metroId={metro.id} />
               <div className="detail-grid">
                 <div className="detail-item"><div className="detail-label">Location</div><div className="detail-value"><MapPin size={13} style={{ display: 'inline', verticalAlign: '-2px' }} /> {metroLocation?.name || metro.locationId}</div></div>
                 <div className="detail-item"><div className="detail-label">Area</div><div className="detail-value">{metroLocation?.area || '—'}</div></div>
