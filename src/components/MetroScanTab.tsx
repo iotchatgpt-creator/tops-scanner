@@ -69,6 +69,8 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
   const scannerRef = useRef<Html5Qrcode | null>(null);
   /** Bumped when the camera effect cleans up or mode changes, so stale async starts do not block or clobber the active session. */
   const scanSessionRef = useRef(0);
+  /** Serializes camera teardown so a new Html5Qrcode never mounts while the previous stream/DOM is still releasing (fixes Barcode ↔ QR switch). */
+  const stopChainRef = useRef(Promise.resolve());
   const rfidInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => { getAllLocations().then(setLocations); }, []);
@@ -134,31 +136,50 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
     return (back ?? devices[0]).id;
   };
 
+  const stopScanner = (): Promise<void> => {
+    const inst = scannerRef.current;
+    if (!inst) {
+      setIsScanning(false);
+      return stopChainRef.current;
+    }
+    const captured = inst;
+    scannerRef.current = null;
+    setIsScanning(false);
+    const task = stopChainRef.current.then(async () => {
+      try {
+        if (captured.isScanning) await captured.stop();
+      } catch (_) {}
+      try {
+        captured.clear();
+      } catch (_) {}
+    });
+    stopChainRef.current = task.catch(() => {});
+    return task;
+  };
+
   const startScanner = async () => {
+    await stopScanner();
     const sessionAtStart = scanSessionRef.current;
     setCameraInitError('');
     setCameraStarting(true);
     try {
+      if (sessionAtStart !== scanSessionRef.current) return;
       if (!window.isSecureContext) {
         throw new Error('INSECURE_CONTEXT');
       }
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('This browser does not expose the camera API (getUserMedia).');
       }
-      if (scannerRef.current?.isScanning) try { await scannerRef.current.stop(); } catch (_) {}
-      if (scannerRef.current) try { scannerRef.current.clear(); } catch (_) {}
-      
+
       const mode = scanMode;
       const formatsToSupport = mode === 'barcode'
         ? BARCODE_SCAN_FORMATS
         : [Html5QrcodeSupportedFormats.QR_CODE];
 
-      // Native BarcodeDetector is helpful for QR but often weaker for 1D; use ZXing for barcode-only mode.
-      const useNativeDetector = mode === 'qrcode';
-
+      // ZXing-only keeps behavior consistent across browsers after mode switches; native BarcodeDetector + parallel teardown caused stuck camera / missed QR reads.
       const instance = new Html5Qrcode('reader', {
         formatsToSupport,
-        useBarCodeDetectorIfSupported: useNativeDetector,
+        useBarCodeDetectorIfSupported: false,
         verbose: false,
       });
       scannerRef.current = instance;
@@ -180,13 +201,15 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       const onOk = (text: string, result: Html5QrcodeResult) => {
         const fmt = result.result.format?.format;
         if (mode === 'qrcode') {
-          if (fmt !== Html5QrcodeSupportedFormats.QR_CODE) return;
+          if (fmt !== undefined && fmt !== Html5QrcodeSupportedFormats.QR_CODE) return;
         } else {
           if (fmt === Html5QrcodeSupportedFormats.QR_CODE) return;
           if (fmt !== undefined && !BARCODE_FORMAT_SET.has(fmt)) return;
         }
-        void stopScanner();
-        void lookupMetro(text, 'CAMERA');
+        void (async () => {
+          await stopScanner();
+          await lookupMetro(text, 'CAMERA');
+        })();
       };
 
       const devices = await Html5Qrcode.getCameras();
@@ -243,15 +266,6 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       }
     } finally {
       setCameraStarting(false);
-    }
-  };
-
-  const stopScanner = async () => {
-    if (scannerRef.current) {
-      if (scannerRef.current.isScanning) try { await scannerRef.current.stop(); } catch (_) {}
-      try { scannerRef.current.clear(); } catch (_) {}
-      scannerRef.current = null;
-      setIsScanning(false);
     }
   };
 
