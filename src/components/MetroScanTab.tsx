@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats, type Html5QrcodeResult } from 'html5-qrcode';
+import {
+  Html5Qrcode,
+  Html5QrcodeSupportedFormats,
+  type Html5QrcodeCameraScanConfig,
+  type Html5QrcodeResult,
+} from 'html5-qrcode';
 import {
   Radio, QrCode, Search, Loader2, ArrowLeft, ScanBarcode,
   CheckCircle, XCircle, MapPin, Package, Clock, ChevronRight
@@ -17,8 +22,6 @@ import MetroBarcode from './MetroBarcode';
 const BARCODE_SCAN_FORMATS: Html5QrcodeSupportedFormats[] = [
   Html5QrcodeSupportedFormats.CODE_128,
 ];
-
-const BARCODE_FORMAT_SET = new Set(BARCODE_SCAN_FORMATS);
 
 // Which actions are available for each metro status
 const STATUS_ACTIONS: Record<MetroStatus, { label: string; nextStatus: MetroStatus; nextType: 'Clean' | 'Soiled'; color: string; desc: string }[]> = {
@@ -170,26 +173,37 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
         ? BARCODE_SCAN_FORMATS
         : [Html5QrcodeSupportedFormats.QR_CODE];
 
-      // ZXing-only keeps behavior consistent across browsers after mode switches; native BarcodeDetector + parallel teardown caused stuck camera / missed QR reads.
+      // QR mode stays ZXing-only (native BarcodeDetector + teardown caused missed QR / stuck camera). Barcode mode may use native detector when available (often better on mobile).
       const instance = new Html5Qrcode('reader', {
         formatsToSupport,
-        useBarCodeDetectorIfSupported: false,
+        useBarCodeDetectorIfSupported: mode === 'barcode',
         verbose: false,
       });
       scannerRef.current = instance;
 
-      const cfg = {
-        fps: 10,
-        qrbox: (vw: number, vh: number) => {
-          if (mode === 'barcode') {
-            const w = Math.min(vw * 0.92, 640);
-            const h = Math.min(Math.max(160, Math.floor(vh * 0.28)), 260);
-            return { width: w, height: h };
-          }
-          const edge = Math.min(vw, vh, 720);
-          const box = Math.max(140, Math.floor(edge * 0.72));
-          return { width: box, height: box };
-        },
+      const buildCameraConfig = (cam: string | { facingMode: string }): Html5QrcodeCameraScanConfig => {
+        const base: Html5QrcodeCameraScanConfig = {
+          fps: mode === 'barcode' ? 20 : 10,
+          qrbox: (vw: number, vh: number) => {
+            if (mode === 'barcode') {
+              // 1D CODE128 needs enough vertical pixels across the bars; a short crop misses decodes on phones.
+              const w = Math.min(vw * 0.96, 720);
+              const h = Math.min(Math.max(200, Math.floor(vh * 0.46)), 400);
+              return { width: w, height: h };
+            }
+            const edge = Math.min(vw, vh, 720);
+            const box = Math.max(140, Math.floor(edge * 0.72));
+            return { width: box, height: box };
+          },
+        };
+        if (mode === 'barcode') {
+          const hiRes: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+          base.videoConstraints =
+            typeof cam === 'string'
+              ? { deviceId: { exact: cam }, ...hiRes }
+              : { facingMode: cam.facingMode, ...hiRes };
+        }
+        return base;
       };
 
       const onOk = (text: string, result: Html5QrcodeResult) => {
@@ -198,7 +212,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
           if (fmt !== undefined && fmt !== Html5QrcodeSupportedFormats.QR_CODE) return;
         } else {
           if (fmt === Html5QrcodeSupportedFormats.QR_CODE) return;
-          if (fmt !== undefined && !BARCODE_FORMAT_SET.has(fmt)) return;
+          // Trust decoded text for metro labels; some devices report missing/inconsistent format enums for CODE128.
           if (!isMetroIdBarcode(text)) return;
         }
         const code =
@@ -229,7 +243,7 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
       for (const cam of tryOrder) {
         if (sessionAtStart !== scanSessionRef.current || scannerRef.current !== instance) break;
         try {
-          await instance.start(cam as any, cfg, onOk, () => {});
+          await instance.start(cam as any, buildCameraConfig(cam), onOk, () => {});
           started = true;
           break;
         } catch (err) {
@@ -412,8 +426,8 @@ export default function MetroScanTab({ onDataChange, initialMetroId, onInitialCo
           ) : (
             <div className="scanner-container">
               {scanMode === 'barcode' && (
-                <p style={{ position: 'absolute', bottom: 8, left: 8, right: 8, zIndex: 2, margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.92)', textAlign: 'center', textShadow: '0 1px 2px rgba(0,0,0,0.75)', pointerEvents: 'none' }}>
-                  Metro barcodes only — expects <strong style={{ fontWeight: 700 }}>MTR-###</strong> (CODE128 labels).
+                <p style={{ position: 'absolute', bottom: 8, left: 8, right: 8, zIndex: 2, margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.92)', textAlign: 'center', textShadow: '0 1px 2px rgba(0,0,0,0.75)', pointerEvents: 'none', lineHeight: 1.35 }}>
+                  Metro barcodes only — <strong style={{ fontWeight: 700 }}>MTR-###</strong> (CODE128). Hold ~15–25&nbsp;cm, steady, with even light; fill the green frame with the bars.
                 </p>
               )}
               <div id="reader" />
